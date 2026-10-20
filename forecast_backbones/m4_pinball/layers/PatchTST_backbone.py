@@ -8,10 +8,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch import nn
 
-try:
-    from ..layers.PatchTST_layers import positional_encoding, get_activation_fn, Transpose
-except ImportError:
-    from layers.PatchTST_layers import positional_encoding, get_activation_fn, Transpose
+from .PatchTST_layers import positional_encoding, get_activation_fn, Transpose
 
 # Cell
 class PatchTST_backbone(nn.Module):

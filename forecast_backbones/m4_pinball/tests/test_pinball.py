@@ -122,6 +122,31 @@ def test_forward_backward_and_label_independence(cfg, B, revin, affine):
     assert build_evaluator("m4_pinball") is evaluate_model
 
 
+def test_encoder_batchnorm_matches_m4(cfg):
+    model = TransformersAdaptedM4PinballModel(cfg)
+    encoder = model.model.backbone.encoder
+    norms = [m for m in encoder.modules() if isinstance(m, torch.nn.BatchNorm1d)]
+    assert len(norms) == 2 * cfg["model"]["e_layers"]
+    assert not any(isinstance(m, torch.nn.LayerNorm) for m in encoder.modules())
+    assert all(m.num_features == cfg["model"]["d_model"] for m in norms)
+
+    # Training must update running statistics; evaluation must keep them fixed.
+    model.train()
+    loss = model(make_batch(), {"observe_power_future": torch.full((3, 16), 20.0)}).loss
+    loss.backward()
+    assert torch.isfinite(loss)
+    assert all(m.num_batches_tracked.item() == 1 for m in norms)
+    assert all(m.weight.grad is not None and torch.isfinite(m.weight.grad).all() for m in norms)
+    stats = [(m.running_mean.clone(), m.running_var.clone()) for m in norms]
+    model.eval()
+    with torch.no_grad():
+        model(make_batch(B=1))
+    for m, (mean, var) in zip(norms, stats):
+        torch.testing.assert_close(m.running_mean, mean, rtol=0, atol=0)
+        torch.testing.assert_close(m.running_var, var, rtol=0, atol=0)
+        assert m.num_batches_tracked.item() == 1
+
+
 def test_train_skips_numpy_decision(cfg, monkeypatch):
     model = TransformersAdaptedM4PinballModel(cfg).train()
     monkeypatch.setattr(

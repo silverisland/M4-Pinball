@@ -1,8 +1,11 @@
 # M4-Pinball
 
 保留 M4 的 PatchTST、天气 / 历史功率 / 外部预测输入及 RevIN，新增独立的
-`m4_pinball` 模型。只读复用 `m4/layers`，不修改 M4 源码、配置或权重。
+`m4_pinball` 模型。PatchTST、RevIN 和输入整理代码均自带于 `m4_pinball/layers`，
+不引用 `m4` 或其他模型包；共享的 `interfaces`、`pipelines` 仍为框架依赖。
+原 M4 源码、配置和权重不受影响。
 末层由 `64 → H` 改为 `64 → H×K`，输出 `[B,H,K]`，默认 H=192、K=9。
+Encoder 显式使用与 M4 一致的 BatchNorm；预测头内原有的 LayerNorm 保持不变。
 
 ## 训练与推理
 
@@ -108,3 +111,9 @@ python -m pytest forecast_backbones/m4_pinball/tests -q
 
 测试包括独立分位梯度、RevIN 共享反归一化、缺测标签、容量错误、M8 选点数值对齐、分段优先级、
 物理开关、零缩放和越界修复，以及本地 Parquet → Trainer → 保存重载 → 统一推理的完整链路。
+
+独立性测试在仅含本模型和框架依赖的临时目录运行，并禁止导入其他模型包。
+层代码迁入本目录本身不改变计算；但随后修复了 Encoder 漏传归一化参数的问题，
+从误用的 LayerNorm 改为与 M4 一致的 BatchNorm。
+修复前的 LayerNorm 版 m4_pinball 权重无法严格加载到当前结构，需要重新训练；
+不可通过忽略缺失权重来视为等价迁移。

@@ -35,6 +35,7 @@ python -m forecast_backbones.m4_pinball.train \
 ## 代码来源与范围
 
 本仓库从本地 NextGenPVForecast 的 `80af0be` 版本导出，仅包含 `m4_pinball` 和运行所需依赖，不携带原仓库 Git 历史。
-`forecast_backbones/m4/layers` 是原 M4 的只读复用层；`interfaces` 和 `pipelines` 是其框架接口。
+`forecast_backbones/m4_pinball/layers` 自带 PatchTST、RevIN 和输入整理实现，不依赖 `m4` 模型包；
+`interfaces` 和 `pipelines` 是共享框架接口。
 `tests/m8_decision_reference.py` 仅用于验证决策数值与原 M8 实现一致，不参与训练或推理。
 不包含其他实验、业务数据或原 M4 点预测模型的训练代码。

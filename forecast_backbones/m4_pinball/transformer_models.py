@@ -1,4 +1,4 @@
-"""M4 quantile adapter. Reuses M4 layers without changing the original M4 model."""
+"""Self-contained M4 quantile adapter using only this model's local layers."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from torch import nn
 
 from interfaces.modeloutput import TransformersAdaptedModelOutput
 
-from ..m4.layers.feature_collator import HFFeatureCollator
-from ..m4.layers.PatchTST_backbone import PatchTST_backbone
-from ..m4.layers.RevIN import RevIN
+from .layers.feature_collator import HFFeatureCollator
+from .layers.PatchTST_backbone import PatchTST_backbone
+from .layers.RevIN import RevIN
 from .config import load_config
 from .decision import decide
 from .losses import pinball_loss
@@ -47,6 +47,7 @@ class TransformersAdaptedM4PinballModel(nn.Module):
             n_heads=m["n_heads"],
             d_model=m["d_model"],
             d_ff=m["d_ff"],
+            norm="BatchNorm",  # Match M4's adapter; the backbone default is LayerNorm.
             dropout=m["dropout"],
             act=m["activation"],
             fc_dropout=m["fc_dropout"],
