@@ -76,22 +76,24 @@ def test_training_and_inference_without_sibling_models(tmp_path):
         from safetensors.torch import load_model
         torch.set_num_threads(1)
         cfg = load_config({
-            'inference': {'input_len': 32, 'pred_len': 16},
+            'inference': {'input_len': 32, 'pred_len': 192},
             'model': {'patch_len': 8, 'stride': 8, 'd_model': 16, 'n_heads': 2,
                       'e_layers': 1, 'd_ff': 32, 'embedding_dim': 16},
             'optimization': {'use_cpu': True, 'fp16': False, 'batch_size': 2,
                              'eval_batch_size': 2, 'train_epochs': 1},
         })
         out = Path('run')
-        trainer = train(cfg, make_frame(), make_frame(), out, max_steps=1)
+        frame = make_frame(future=192)
+        trainer = train(cfg, frame, frame, out, max_steps=1)
         restored = build_model('m4_pinball', cfg).eval()
         load_model(restored, str(out / 'model_result' / 'model.safetensors'))
         trainer.model.eval()
         with torch.no_grad():
-            expected = trainer.model(make_batch()).logits
-            actual = restored(make_batch()).logits
+            expected = trainer.model(make_batch(future=192)).logits
+            actual = restored(make_batch(future=192)).logits
         torch.testing.assert_close(actual, expected, rtol=0, atol=0)
-        assert actual.shape == (3, 16)
+        assert actual.shape == (3, 192)
+        assert trainer.state.best_metric is not None
         print('Independent train/save/reload/inference passed')
     """)
     env = {

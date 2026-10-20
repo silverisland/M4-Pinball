@@ -69,13 +69,16 @@ def make_batch(B=3, history=32, future=16):
     }
 
 
-def make_frame(B=4):
-    batch = make_batch(B)
+def make_frame(B=4, history=32, future=16):
+    batch = make_batch(B, history=history, future=future)
     data = {
         k: list(v.numpy()) if isinstance(v, torch.Tensor) else v
         for k, v in batch.items()
     }
     data["observe_power_future"] = list(batch["general_ghi_predict"].numpy() / 25.0)
+    data["timestamp_win"] = (
+        pd.Timestamp("2025-06-01 09:00").value // 10**9 + np.arange(B) * 900
+    )
     return pd.DataFrame(data)
 
 
@@ -136,7 +139,9 @@ def test_encoder_batchnorm_matches_m4(cfg):
     loss.backward()
     assert torch.isfinite(loss)
     assert all(m.num_batches_tracked.item() == 1 for m in norms)
-    assert all(m.weight.grad is not None and torch.isfinite(m.weight.grad).all() for m in norms)
+    assert all(
+        m.weight.grad is not None and torch.isfinite(m.weight.grad).all() for m in norms
+    )
     stats = [(m.running_mean.clone(), m.running_var.clone()) for m in norms]
     model.eval()
     with torch.no_grad():
@@ -323,13 +328,18 @@ def test_optional_physics_columns(cfg):
 
 
 def test_train_save_reload_and_unified_inference(cfg, tmp_path):
-    frame = make_frame()
+    cfg["inference"]["pred_len"] = 192
+    frame = make_frame(future=192)
     tr, va = tmp_path / "train.parquet", tmp_path / "valid.parquet"
     frame.to_parquet(tr, index=False)
     frame.to_parquet(va, index=False)
     out_dir = tmp_path / "run"
     trainer = train(cfg, tr, va, out_dir, max_steps=2, test_source=va)
     assert trainer.state.global_step == 2
+    assert trainer.args.metric_for_best_model == "eval_nanwang_short_d1"
+    assert trainer.args.greater_is_better
+    assert trainer.state.best_metric is not None
+    assert "eval_nanwang_short_d1" in trainer.evaluate()
     restored = build_model(
         "m4_pinball", load_config(out_dir / "model_result" / "model_config.yaml")
     )
@@ -337,7 +347,8 @@ def test_train_save_reload_and_unified_inference(cfg, tmp_path):
     restored.eval()
     trainer.model.eval()
     torch.testing.assert_close(
-        restored(make_batch()).logits, trainer.model(make_batch()).logits
+        restored(make_batch(future=192)).logits,
+        trainer.model(make_batch(future=192)).logits,
     )
     ds = build_dataset(frame, cfg)
     result = evaluate_model(restored, ds, COLLATE, cfg)
@@ -363,8 +374,9 @@ def test_training_script_dispatch(cfg, tmp_path):
 
     train_script.RUN_PATH = tmp_path
     args, device = train_script.build_train_args("m4_pinball", cfg)
-    assert args.prediction_loss_only and device == "cpu"
-    frame = make_frame()
+    assert not args.prediction_loss_only and device == "cpu"
+    cfg["inference"]["pred_len"] = 192
+    frame = make_frame(future=192)
     for split in ("train", "valid", "test"):
         frame.to_parquet(tmp_path / f"{split}.parquet", index=False)
     config_path = tmp_path / "cfg.yaml"
